@@ -1,0 +1,33 @@
+1. 环境配置
+
+   1. 首先，然后
+
+      1. 首先在Anaconda的终端创建虚拟环境,并且启动虚拟环境
+
+         ```
+         conda create -n FDD python==3.7.16
+         activate FDD
+         ```
+
+      2. 下包安装requirements的前面几包
+
+         ```
+         pip install opencv-contrib-python==4.2.0.34 -i https://pypi.tuna.tsinghua.edu.cn/simple
+         pip install imutils==0.5.3 -i https://pypi.tuna.tsinghua.edu.cn/simple
+         ```
+
+         如此循环
+
+      3. 最后的dlib使用本地导入的方式导入包
+
+         ![image-20230922212404989](C:\Users\ergou\AppData\Roaming\Typora\typora-user-images\image-20230922212404989.png)
+
+         
+
+2. 在终端使用
+
+   ```
+   python FDD.py -p"video_1.avi" 
+   ```
+
+   ”video_1.avi“是视频文件名，（将数据集的视频拷贝出来验证比较快一点
