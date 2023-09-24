@@ -2,105 +2,106 @@ from imutils import face_utils
 import time
 import dlib
 from cv2 import cv2
-import numpy as np
+import argparse
 from EAR import eye_aspect_ratio
 from MAR import mouth_aspect_ratio
-import argparse
+
 
 def run(name):
-    flag = 0
-    # initialize dlib's face detector (HOG-based) and then create the
-    # facial landmark predictor
-    print("[INFO] loading facial landmark predictor...")
+    print("Loading facial landmark predictor...")
     detector = dlib.get_frontal_face_detector()
+    # 使用dlib的库里带的脸部标志检测器1来获取脸部的68个点
     predictor = dlib.shape_predictor(
         './dlib_shape_predictor/shape_predictor_68_face_landmarks.dat')
 
-    # initialize the video stream and sleep for a bit, allowing the
-    # camera sensor to warm up
-    print("opening video stream...")
+    # 使用cv2来打开视频文件,并且进行判断,若没有正确打开文件退出
     vs = cv2.VideoCapture(name)
-    # vs = VideoStream(usePiCamera=True).start() # Raspberry Pi
-    time.sleep(2.0)
-    # loop over the frames from the video stream
-    # 2D image points. If you change the image, you need to change vector
-    image_points = np.array([
-        (359, 391),  # Nose tip 34
-        (399, 561),  # Chin 9
-        (337, 297),  # Left eye left corner 37
-        (513, 301),  # Right eye right corne 46
-        (345, 465),  # Left Mouth corner 49
-        (453, 469)  # Right mouth corner 55
-    ], dtype="double")
+    if vs.isOpened():
+        print("Video file opened successfully.")
+    else:
+        print("Failed to open video file.")
+        return 0
 
+    time.sleep(2.0)
     (lStart, lEnd) = face_utils.FACIAL_LANDMARKS_IDXS["left_eye"]
     (rStart, rEnd) = face_utils.FACIAL_LANDMARKS_IDXS["right_eye"]
 
-    EYE_AR_THRESH = 0.20
-    MOUTH_AR_THRESH = 0.85
-    EYE_AR_CONSEC_FRAMES = 15
-    COUNTER = 0
+    eye_ar_thresh = 0.20
+    # ear一段时间的判断阙值
+    eye_ar_thresh_all = 0.30
+    # ear总体时间的判断阙值
+    mouth_ar_thresh = 0.85
+    # mar的判断阙值
+    counter = 0
 
-    # grab the indexes of the facial landmarks for the mouth
+    eye_tired_nums = 0
+    # 整个过程眼睛的不正常帧数
+    frame_nums = 0
+    # 视频总帧数
+    eye_close = 0
+    # 不正常闭眼数
+    yaw_nums = 0
+    # 深哈欠检测
+
     (mStart, mEnd) = (49, 68)
     while True:
+        frame_nums += 1
         (grabbed, frame) = vs.read()
         if frame is None:
             break
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        size = gray.shape
-        # detect faces in the grayscale frame
+        # 对图像进行灰度处理
+        num_frames = vs.get(cv2.CAP_PROP_FPS)
+        eye_ar_consed_frames = int(num_frames / 2) + 1
+        # 视频的每秒帧数来作为不正常闭眼的判断依据
+
         rects = detector(gray, 0)
 
-
-        # loop over the face detections
         for rect in rects:
-            # compute the bounding box of the face and draw it on the
-            # frame
+            # 对于每一帧进行处理
+
             (bX, bY, bW, bH) = face_utils.rect_to_bb(rect)
             cv2.rectangle(frame, (bX, bY), (bX + bW, bY + bH), (0, 255, 0), 1)
-            # determine the facial landmarks for the face region, then
-            # convert the facial landmark (x, y)-coordinates to a NumPy
-            # array
             shape = predictor(gray, rect)
+
             shape = face_utils.shape_to_np(shape)
 
-            # extract the left and right eye coordinates, then use the
-            # coordinates to compute the eye aspect ratio for both eyes
             leftEye = shape[lStart:lEnd]
             rightEye = shape[rStart:rEnd]
             leftEAR = eye_aspect_ratio(leftEye)
             rightEAR = eye_aspect_ratio(rightEye)
-            # average the eye aspect ratio together for both eyes
+            # 获取ear和mar的判断数据
+
             ear = (leftEAR + rightEAR) / 2.0
-            # compute the convex hull for the left and right eye, then
-            # visualize each of the eyes
-            # check to see if the eye aspect ratio is below the blink
-            # threshold, and if so, increment the blink frame counter
+            # 计算ear
             mouth = shape[mStart:mEnd]
-
-
-            if ear < EYE_AR_THRESH:
-                COUNTER += 1
-                # if the eyes were closed for a sufficient number of times
-                # then show the warning
-                if COUNTER == EYE_AR_CONSEC_FRAMES:
-                    flag += 1
-                # otherwise, the eye aspect ratio is not below the blink
-                # threshold, so reset the counter and alarm
+            if ear < eye_ar_thresh_all:
+                eye_tired_nums += 1
+            if ear < eye_ar_thresh:
+                counter += 1
+                if counter == eye_ar_consed_frames:
+                    eye_close += 1
             else:
-                COUNTER = 0
-
+                counter = 0
             mouthMAR = mouth_aspect_ratio(mouth)
             mar = mouthMAR
-            mouthHull = cv2.convexHull(mouth)
-
-            if mar >= MOUTH_AR_THRESH and ear <= EYE_AR_THRESH:
-                flag += 1
-    if flag > 3:
+            # 计算mar
+            if mar >= mouth_ar_thresh and ear <= eye_ar_thresh:
+                yaw_nums += 1
+    if yaw_nums + eye_close > 3:
         print("Yes")
-    else :
+        return 1
+    elif eye_close >= 3:
+        print("Yes")
+        return 1
+    elif eye_tired_nums >= frame_nums * 0.70:
+        print("Yes")
+        return 1
+    else:
         print("No")
+        return 0
+
+
 ap = argparse.ArgumentParser()
 ap.add_argument("-p", "--path", type=str,
                 default="",
